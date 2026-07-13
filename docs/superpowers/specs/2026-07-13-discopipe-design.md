@@ -40,11 +40,15 @@ Carried over from discomux (reviewed and hardened there):
    the channel is `DISCOPIPE_CHANNEL_ID` (bots always dropped). Empty
    messages (attachment-only) are ignored.
 2. **Run**: spawn `DISCOPIPE_CMD` (shlex-split) in `DISCOPIPE_CWD`, write the
-   message content to stdin, close stdin, collect stdout+stderr combined.
-3. **Reply**: send the output back as a plain Discord message — *not*
+   message content to stdin, close stdin, capture stdout and stderr
+   **separately** — verified: `claude` emits warnings on stderr (e.g.
+   `⚠ claude.ai connectors are disabled…`) even on success, which must not
+   leak into every reply.
+3. **Reply**: send **stdout only** back as a plain Discord message — *not*
    code-fenced, since agent output is markdown and Discord renders it.
-   Empty output → `(no output)`. Nonzero exit → send the output anyway,
-   with a short `(exit N)` note appended.
+   Empty output → `(no output)`. Nonzero exit → send stdout anyway, then
+   append `(exit N)` and the captured stderr (fenced), which is where the
+   failure reason lives. No retry: the operator reads the error and decides.
 
 ### Agent command
 
@@ -55,12 +59,19 @@ claude -p --continue --dangerously-skip-permissions
 ```
 
 - `--continue` resumes the latest conversation in `DISCOPIPE_CWD`, which is
-  what makes a Discord channel behave like one ongoing session. On the very
-  first message there is nothing to continue and the command exits nonzero.
-  Rule: when the command line contains `--continue` and exits nonzero, retry
-  exactly once with `--continue` removed; if the retry also fails, report
-  that failure. (Exact first-run failure mode to be verified during
-  implementation.)
+  what makes a Discord channel behave like one ongoing session. Verified
+  2026-07-13: with no conversation to continue, `claude -p --continue`
+  silently starts a fresh one and exits 0, and a second `--continue` run
+  does resume it — so no first-run special case exists. There is **no
+  retry-without-`--continue` rule**: a nonzero exit can mean a transient
+  API/network error, and re-running the request in a fresh conversation
+  would replay side effects (e.g. create a duplicate PR) while silently
+  dropping the session context. Failures are reported, never retried.
+- Because `--continue` means "the latest conversation *in this directory*",
+  `DISCOPIPE_CWD` must be **dedicated to the bot**. Running interactive
+  `claude` in the same directory (e.g. over ssh) creates a newer
+  conversation that the bot's next `--continue` silently hijacks — no
+  error, just a derailed thread. Document this in the README.
 - `--dangerously-skip-permissions` is required because headless runs cannot
   answer permission prompts. Accepted risk: the box is single-purpose and
   owned by the operator, and Discord-side authorization already limits input
@@ -84,8 +95,17 @@ group, recover whatever output was produced (shielded `communicate()`), append
 
 ### Output limits
 
-Discord caps messages at 2000 chars. Keep the tail (the end of an answer
-matters most), prefix `… (truncated)`. Multi-message chunking is deferred.
+Discord caps messages at 2000 chars. Two layers:
+
+- **Primary (operational, no code)**: a `CLAUDE.md` in `DISCOPIPE_CWD`
+  instructs the agent to keep replies under ~1800 chars, terse, writing
+  details to files and citing paths. This is a soft constraint — the model
+  cannot count characters exactly and breaks length instructions when
+  quoting logs/diffs — so it cannot be the only layer.
+- **Safety net (code)**: `reply_text` tail-truncates to fit 2000 (the end
+  of an answer matters most), prefix `… (truncated)`. With the CLAUDE.md
+  layer in place this should fire rarely; multi-message chunking stays
+  deferred.
 
 ## Config (environment only)
 
@@ -105,7 +125,8 @@ Missing required var or non-integer id → `sys.exit` naming the variable.
 nbdev repo, single notebook `nbs/00_bot.ipynb`, exported module
 `discopipe/bot.py`, console entry point `discopipe`.
 
-- `run_agent(text, cmd, cwd, timeout) -> str` — subprocess runner with the
+- `run_agent(text, cmd, cwd, timeout) -> tuple[str, str, int]` —
+  subprocess runner returning (stdout, stderr, returncode), with the
   timeout/killpg/partial-output behavior above
 - `reply_text(text, limit=2000) -> str` — tail-keeping truncation (no fences)
 - `load_config() -> dict` — env → config dict
@@ -117,9 +138,10 @@ Estimated exported code: ~50 lines.
 ## Testing
 
 - **Unit (in-notebook, nbdev-test)**: `run_agent` against a stub CLI (a bash
-  one-liner reading stdin), including timeout-kill and partial-output
-  recovery; `reply_text` truncation edges; `load_config` missing/malformed
-  vars; the `--continue` retry path with a stub that fails first.
+  one-liner reading stdin), including timeout-kill, partial-output
+  recovery, stderr kept separate from stdout, and nonzero exit reported
+  (not retried); `reply_text` truncation edges; `load_config`
+  missing/malformed vars.
 - **E2E (manual, like discomux Level 3)**: real `claude -p` on the VM, real
   Discord channel; verify continuity across two messages, a `gh`-using
   request, timeout behavior, and that output never pings.
