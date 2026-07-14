@@ -5,4 +5,4 @@ d = { 'settings': { 'branch': 'main',
                 'doc_host': 'https://doyu.github.io',
                 'git_url': 'https://github.com/doyu/discopipe',
                 'lib_path': 'discopipe'},
-  'syms': {'discopipe.bot': {}}}
+  'syms': {'discopipe.bot': {'discopipe.bot.run_agent': ('bot.html#run_agent', 'discopipe/bot.py')}}}
