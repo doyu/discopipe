@@ -5,10 +5,9 @@
 
 Discord passthrough to a headless coding agent CLI.
 
-One authorized Discord user in one channel talks to
-`claude -p --continue` running on this box. Messages go to the agent’s
-stdin; its stdout comes back as the reply. No prefixes, no commands —
-pure pass-through.
+One authorized Discord user in one channel talks to `claude -p --continue`
+running on this box. Messages go to the agent’s stdin; its stdout comes
+back as the reply. No prefixes, no commands — pure pass-through.
 
 ## Install
 
@@ -27,14 +26,13 @@ pip install -e .
 | `DISCOPIPE_CMD` | no | `claude -p --continue --dangerously-skip-permissions` | agent command line |
 | `DISCOPIPE_TIMEOUT` | no | `600` | wall-clock seconds per run |
 
-**`DISCOPIPE_CWD` must be a directory dedicated to the bot.**
-`--continue` resumes “the latest conversation in this directory”, so
-running interactive `claude` there (e.g. over ssh) silently hijacks the
-bot’s thread.
+**`DISCOPIPE_CWD` must be a directory dedicated to the bot.** `--continue`
+resumes “the latest conversation in this directory”, so running interactive
+`claude` there (e.g. over ssh) silently hijacks the bot’s thread.
 
-**Put a `CLAUDE.md` in `DISCOPIPE_CWD`** telling the agent to keep
-replies under ~1800 characters (Discord caps messages at 2000; the bot
-truncates as a safety net, keeping the tail). Example:
+**Put a `CLAUDE.md` in `DISCOPIPE_CWD`** telling the agent to keep replies
+under ~1800 characters (Discord caps messages at 2000; the bot truncates as
+a safety net, keeping the tail). Example:
 
     Replies are read on a phone via Discord. Keep every reply under 1800
     characters. Be terse. For long output, write it to a file and reply
@@ -46,6 +44,10 @@ permission prompts. Run this only on a single-purpose box you own; the
 Discord side already restricts input to one user and one channel.
 
 ## Run
+
+In the Discord Developer Portal, enable the **Message Content** privileged
+intent for the bot — without it every message arrives empty and is
+silently dropped.
 
 Put the variables in a `chmod 600` env file (e.g.
 `~/.config/discopipe/env`) — never on the command line, where the token
