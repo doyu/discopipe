@@ -56,4 +56,6 @@ def reply_text(text:str,        # reply body (markdown, not fenced)
     if not body: return "(no output)"
     if len(body) <= limit: return body
     marker = "… (truncated)\n"
-    return marker + body[-(limit - len(marker)):]
+    avail = limit - len(marker)
+    if avail <= 0: return marker[:limit]   # degenerate cap: marker alone, clipped
+    return marker + body[-avail:]
