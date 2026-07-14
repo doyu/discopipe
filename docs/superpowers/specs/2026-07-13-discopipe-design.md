@@ -71,7 +71,10 @@ claude -p --continue --dangerously-skip-permissions
   `DISCOPIPE_CWD` must be **dedicated to the bot**. Running interactive
   `claude` in the same directory (e.g. over ssh) creates a newer
   conversation that the bot's next `--continue` silently hijacks — no
-  error, just a derailed thread. Document this in the README.
+  error, just a derailed thread. For this reason `DISCOPIPE_CWD` is
+  **required with no default**: a `$HOME` default would silently collide
+  with the operator's everyday interactive sessions. Document this in the
+  README.
 - `--dangerously-skip-permissions` is required because headless runs cannot
   answer permission prompts. Accepted risk: the box is single-purpose and
   owned by the operator, and Discord-side authorization already limits input
@@ -82,8 +85,9 @@ claude -p --continue --dangerously-skip-permissions
 
 ### Concurrency
 
-One `asyncio.Lock` per channel serializes agent runs: two concurrent
-`--continue` invocations against the same session directory would race.
+One `asyncio.Lock` serializes agent runs (there is only one authorized
+channel): two concurrent `--continue` invocations against the same session
+directory would race.
 Messages queue in arrival order. While the agent runs, the bot shows the
 Discord typing indicator.
 
@@ -107,6 +111,11 @@ Discord caps messages at 2000 chars. Two layers:
   layer in place this should fire rarely; multi-message chunking stays
   deferred.
 
+Accepted risk: `run_agent` buffers the agent's full stdout/stderr in memory
+before truncation (`communicate()`). A `claude -p` final answer is small in
+practice, and input is limited to one authorized user on an owned box; a
+bounded-read runner is not worth the complexity here.
+
 ## Config (environment only)
 
 | var | required | default | meaning |
@@ -114,7 +123,7 @@ Discord caps messages at 2000 chars. Two layers:
 | `DISCORD_TOKEN` | yes | — | bot token |
 | `DISCOPIPE_USER_ID` | yes | — | the one authorized Discord user (int) |
 | `DISCOPIPE_CHANNEL_ID` | yes | — | the one authorized channel (int) |
-| `DISCOPIPE_CWD` | no | `$HOME` | working directory for the agent |
+| `DISCOPIPE_CWD` | yes | — | working directory for the agent — **must be dedicated to the bot** |
 | `DISCOPIPE_CMD` | no | see above | agent command line, shlex-split |
 | `DISCOPIPE_TIMEOUT` | no | `600` | wall-clock seconds per run |
 
@@ -141,7 +150,10 @@ Estimated exported code: ~50 lines.
   one-liner reading stdin), including timeout-kill, partial-output
   recovery, stderr kept separate from stdout, and nonzero exit reported
   (not retried); `reply_text` truncation edges; `load_config`
-  missing/malformed vars.
+  missing/malformed vars; `Discopipe.on_message` driven with fake
+  message/channel objects — silent drops (bot author, wrong user, wrong
+  channel, empty content), stdout-only reply on success, `(exit N)` +
+  stderr on failure.
 - **E2E (manual, like discomux Level 3)**: real `claude -p` on the VM, real
   Discord channel; verify continuity across two messages, a `gh`-using
   request, timeout behavior, and that output never pings.

@@ -22,57 +22,61 @@
 
 ---
 
-### Task 1: nbdev scaffold
+### Task 1: nbdev scaffold (reused from ~/discomux)
 
 **Files:**
-- Create: `pyproject.toml`, `nbs/nbdev.yml`, `nbs/index.ipynb`, `nbs/00_bot.ipynb`, `discopipe/` (via `nbdev-new` + edits)
-- Delete: `nbs/00_core.ipynb` (nbdev-new's default, replaced by `00_bot.ipynb`)
+- Create (copied from `/home/doyu/discomux` and renamed): `pyproject.toml`, `.gitignore`, `.github/workflows/test.yaml`, `MANIFEST.in`, `LICENSE`, `nbs/nbdev.yml`, `nbs/_quarto.yml`, `nbs/styles.css`, `nbs/index.ipynb`, `discopipe/__init__.py`
+- Create: `nbs/00_bot.ipynb`
 
 **Interfaces:**
-- Consumes: nothing (first task)
+- Consumes: `/home/doyu/discomux` — a proven nbdev repo of the exact same shape (pyproject-style nbdev, console script, CI that runs `nbdev-test` and checks export sync)
 - Produces: a working nbdev repo where `nbdev-export` writes `discopipe/bot.py` from `nbs/00_bot.ipynb` and `pip install -e .` provides the `discopipe` console script. Later tasks only add notebook cells.
 
-- [ ] **Step 1: Scaffold with nbdev-new**
+Rationale: `nbdev-new` in a non-empty directory is fragile; discomux's scaffold is already reviewed and CI-tested. Copy + rename beats regenerate.
+
+- [ ] **Step 1: Copy the scaffold from discomux**
 
 ```bash
-cd /home/doyu/discopipe && nbdev-new --repo discopipe --user doyu \
-  --author "Hiroshi Doyu" --author_email hiroshi.doyu@ninjalabo.com \
-  --description "Discord passthrough to a headless coding agent CLI"
+cd /home/doyu/discopipe && \
+cp /home/doyu/discomux/pyproject.toml /home/doyu/discomux/.gitignore \
+   /home/doyu/discomux/MANIFEST.in /home/doyu/discomux/LICENSE . && \
+mkdir -p .github/workflows nbs discopipe && \
+cp /home/doyu/discomux/.github/workflows/test.yaml .github/workflows/ && \
+cp /home/doyu/discomux/nbs/nbdev.yml /home/doyu/discomux/nbs/_quarto.yml \
+   /home/doyu/discomux/nbs/styles.css /home/doyu/discomux/nbs/index.ipynb nbs/ && \
+echo '__version__ = "0.0.1"' > discopipe/__init__.py
 ```
 
-Expected: creates `pyproject.toml`, `nbs/` (with `index.ipynb`, `00_core.ipynb`, `nbdev.yml`), `discopipe/`. If it complains about existing files, inspect and keep the spec/plan docs — they don't conflict.
+- [ ] **Step 2: Rename discomux → discopipe in the copied config**
 
-- [ ] **Step 2: Adjust pyproject.toml**
-
-In `pyproject.toml`, make these three settings read exactly (edit in place, keep everything else nbdev generated):
-
-```toml
-dependencies = ["discord.py"]
-
-[project.scripts]
-discopipe = "discopipe.bot:main"
+```bash
+cd /home/doyu/discopipe && sed -i 's/discomux/discopipe/g' pyproject.toml nbs/nbdev.yml && \
+sed -i 's/Discord transport adapter for tmux\/byobu agent sessions on doyu-box/Discord passthrough to a headless coding agent CLI/' pyproject.toml nbs/nbdev.yml && \
+grep -n "discopipe" pyproject.toml | head
 ```
 
-(nbdev-new may emit `dependencies = []` and no `[project.scripts]`; discomux's pyproject is the reference shape.)
+Expected: `name = "discopipe"`, `discopipe = "discopipe.bot:main"` under `[project.scripts]`, `dependencies = ["discord.py"]` (inherited from discomux), and nbdev.yml pointing at `doyu.github.io/discopipe`. Verify description strings were replaced; fix by hand if the sed pattern missed (discomux may phrase it slightly differently — check with `grep -n description pyproject.toml nbs/nbdev.yml`).
 
-- [ ] **Step 3: Replace the default notebook**
+- [ ] **Step 3: Create the bot notebook**
 
-Delete `nbs/00_core.ipynb`. Create `nbs/00_bot.ipynb` (use NotebookEdit) with two cells:
+NotebookEdit cannot create files — Write `nbs/00_bot.ipynb` as raw JSON first:
 
-Cell 1 (markdown):
-
-```markdown
-# bot
-
-> Discord passthrough to a headless coding agent CLI: subprocess runner,
-> reply shaping, env config, and the thin discord.py glue.
+```json
+{
+ "cells": [
+  {"cell_type": "markdown", "metadata": {}, "source": [
+    "# bot\n", "\n",
+    "> Discord passthrough to a headless coding agent CLI: subprocess runner,\n",
+    "> reply shaping, env config, and the thin discord.py glue."]},
+  {"cell_type": "code", "execution_count": null, "metadata": {}, "outputs": [],
+   "source": ["#| default_exp bot"]}
+ ],
+ "metadata": {"kernelspec": {"display_name": "python3", "language": "python", "name": "python3"}},
+ "nbformat": 4, "nbformat_minor": 5
+}
 ```
 
-Cell 2 (code):
-
-```python
-#| default_exp bot
-```
+Later tasks append cells to this existing notebook with NotebookEdit. Also update `nbs/index.ipynb`'s discomux-specific prose minimally (Task 6 rewrites it properly).
 
 - [ ] **Step 4: Install dependencies and the package**
 
@@ -171,7 +175,7 @@ async def run_agent(text:str,            # message for the agent, fed to stdin
             out, err = await asyncio.wait_for(asyncio.shield(comm), 1)
         except asyncio.TimeoutError:
             comm.cancel()
-            return "… timed out (output withheld by a background child)\n", "", -9
+            return "… timed out (output withheld by a background child)\n", "", -9   # -9: killed by SIGKILL
         rc = proc.returncode if proc.returncode is not None else -9
         return out.decode(errors="replace") + "\n… timed out\n", err.decode(errors="replace"), rc
     return out.decode(errors="replace"), err.decode(errors="replace"), proc.returncode
@@ -293,26 +297,33 @@ Append a markdown cell then this code cell:
 
 Environment variables only. Missing/malformed required var → clean
 `sys.exit` naming the variable (lands in the systemd journal).
+`DISCOPIPE_CWD` is **required**: `--continue` resumes "the latest
+conversation in this directory", so a `$HOME` default would silently
+collide with the operator's interactive claude sessions.
 ```
 
 ```python
 import os
-_env = dict(DISCORD_TOKEN="tok", DISCOPIPE_USER_ID="1", DISCOPIPE_CHANNEL_ID="2")
-for k in ("DISCOPIPE_CWD","DISCOPIPE_CMD","DISCOPIPE_TIMEOUT"): os.environ.pop(k, None)
+_env = dict(DISCORD_TOKEN="tok", DISCOPIPE_USER_ID="1", DISCOPIPE_CHANNEL_ID="2",
+            DISCOPIPE_CWD="/srv/agent")
+for k in ("DISCOPIPE_CMD","DISCOPIPE_TIMEOUT"): os.environ.pop(k, None)
 os.environ.update(_env)
 cfg = load_config()
 assert cfg == dict(token="tok", user_id=1, channel_id=2,
-                   cwd=os.path.expanduser("~"), cmd=DEFAULT_CMD, timeout=600.0)
+                   cwd="/srv/agent", cmd=DEFAULT_CMD, timeout=600.0)
 
-os.environ.update(DISCOPIPE_CWD="/srv/agent", DISCOPIPE_CMD="codex exec",
-                  DISCOPIPE_TIMEOUT="30")
+os.environ.update(DISCOPIPE_CMD="codex exec", DISCOPIPE_TIMEOUT="30")
 cfg = load_config()
-assert (cfg["cwd"], cfg["cmd"], cfg["timeout"]) == ("/srv/agent", "codex exec", 30.0)
-for k in ("DISCOPIPE_CWD","DISCOPIPE_CMD","DISCOPIPE_TIMEOUT"): os.environ.pop(k)
+assert (cfg["cmd"], cfg["timeout"]) == ("codex exec", 30.0)
+for k in ("DISCOPIPE_CMD","DISCOPIPE_TIMEOUT"): os.environ.pop(k)
 
 del os.environ["DISCORD_TOKEN"]
 try: load_config(); assert False, "expected SystemExit"
 except SystemExit as e: assert "DISCORD_TOKEN" in str(e)
+
+os.environ.update(_env); del os.environ["DISCOPIPE_CWD"]
+try: load_config(); assert False, "expected SystemExit"
+except SystemExit as e: assert "DISCOPIPE_CWD" in str(e)   # required: no $HOME default
 
 os.environ.update(_env); os.environ["DISCOPIPE_USER_ID"] = "not-a-number"
 try: load_config(); assert False, "expected SystemExit"
@@ -347,7 +358,7 @@ def load_config()->dict:  # token, user_id, channel_id, cwd, cmd, timeout
     "Read discopipe config from the environment; exit with a message if incomplete."
     e = os.environ
     try:
-        token = e["DISCORD_TOKEN"]
+        token, cwd = e["DISCORD_TOKEN"], e["DISCOPIPE_CWD"]
         user_raw, chan_raw = e["DISCOPIPE_USER_ID"], e["DISCOPIPE_CHANNEL_ID"]
     except KeyError as ex:
         sys.exit(f"discopipe: missing environment variable {ex.args[0]}")
@@ -357,8 +368,7 @@ def load_config()->dict:  # token, user_id, channel_id, cwd, cmd, timeout
     except ValueError: sys.exit("discopipe: DISCOPIPE_CHANNEL_ID must be an integer")
     try: timeout = float(e.get("DISCOPIPE_TIMEOUT", "600"))
     except ValueError: sys.exit("discopipe: DISCOPIPE_TIMEOUT must be a number")
-    return dict(token=token, user_id=user_id, channel_id=channel_id,
-                cwd=e.get("DISCOPIPE_CWD", os.path.expanduser("~")),
+    return dict(token=token, user_id=user_id, channel_id=channel_id, cwd=cwd,
                 cmd=e.get("DISCOPIPE_CMD", DEFAULT_CMD), timeout=timeout)
 ```
 
@@ -400,16 +410,47 @@ directory would race. Typing indicator while the agent works.
 
 ```python
 import discord
+
+class _FakeTyping:
+    async def __aenter__(self): return None
+    async def __aexit__(self, *a): return False
+
+class _FakeChannel:
+    def __init__(self, cid): self.id, self.sent = cid, []
+    def typing(self): return _FakeTyping()
+    async def send(self, content): self.sent.append(content)
+
+class _FakeAuthor:
+    def __init__(self, uid, bot=False): self.id, self.bot = uid, bot
+
+class _FakeMsg:
+    def __init__(self, content, uid=1, cid=2, bot=False):
+        self.content, self.author, self.channel = content, _FakeAuthor(uid, bot), _FakeChannel(cid)
+
 intents = discord.Intents.default()
 intents.message_content = True
 c = Discopipe(dict(token="x", user_id=1, channel_id=2, cwd=".",
-                   cmd=DEFAULT_CMD, timeout=600.0),
+                   cmd="bash -c 'cat; echo warn >&2'", timeout=5.0),
               intents=intents, allowed_mentions=discord.AllowedMentions.none())
-assert c.cfg["cmd"] == DEFAULT_CMD
-assert isinstance(c._lock, asyncio.Lock)
 assert c.allowed_mentions.everyone is False        # output can never ping @everyone/@here
 assert c.allowed_mentions.users is False and c.allowed_mentions.roles is False
 assert callable(main)
+
+m = _FakeMsg("hello")
+await c.on_message(m)
+assert m.channel.sent == ["hello"]                 # stdout only; stderr warn never leaks
+
+for bad in (_FakeMsg("x", bot=True), _FakeMsg("x", uid=999),
+            _FakeMsg("x", cid=999), _FakeMsg("")):
+    await c.on_message(bad)
+    assert bad.channel.sent == []                  # silent drop, all four reasons
+
+c.cfg["cmd"] = "bash -c 'echo partial; echo boom >&2; exit 3'"
+m = _FakeMsg("ignored")
+await c.on_message(m)
+assert len(m.channel.sent) == 1
+r = m.channel.sent[0]
+assert "partial" in r and "(exit 3)" in r and "boom" in r   # failure carries stderr
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -511,7 +552,7 @@ pip install -e .
 | `DISCORD_TOKEN` | yes | — | bot token |
 | `DISCOPIPE_USER_ID` | yes | — | the one authorized Discord user (int) |
 | `DISCOPIPE_CHANNEL_ID` | yes | — | the one authorized channel (int) |
-| `DISCOPIPE_CWD` | no | `$HOME` | working directory for the agent |
+| `DISCOPIPE_CWD` | yes | — | working directory for the agent — dedicate it to the bot |
 | `DISCOPIPE_CMD` | no | `claude -p --continue --dangerously-skip-permissions` | agent command line |
 | `DISCOPIPE_TIMEOUT` | no | `600` | wall-clock seconds per run |
 
@@ -534,8 +575,13 @@ Discord side already restricts input to one user and one channel.
 
 ## Run
 
+Put the variables in a `chmod 600` env file (e.g.
+`~/.config/discopipe/env`) — never on the command line, where the token
+would land in shell history. A systemd unit consumes the same file via
+`EnvironmentFile=`.
+
 ```sh
-discopipe
+set -a; source ~/.config/discopipe/env; set +a; discopipe
 ```
 
 Nonzero agent exits are reported in the reply as `(exit N)` plus the
@@ -573,26 +619,42 @@ the path and a 3-line summary.
 EOF
 ```
 
-- [ ] **Step 2: Start the bot**
+- [ ] **Step 2: Create the env file (never put the token on a command line)**
+
+A token typed inline lands in shell history. Use a `chmod 600` env file —
+the same file a systemd unit consumes later via `EnvironmentFile=`:
 
 ```bash
-cd /home/doyu/discopipe && \
-DISCORD_TOKEN=<token> DISCOPIPE_USER_ID=<your-id> DISCOPIPE_CHANNEL_ID=<channel-id> \
-DISCOPIPE_CWD=~/discopipe-agent discopipe
+mkdir -p ~/.config/discopipe && touch ~/.config/discopipe/env && chmod 600 ~/.config/discopipe/env
+cat > ~/.config/discopipe/env <<'EOF'
+DISCORD_TOKEN=REPLACE_ME
+DISCOPIPE_USER_ID=REPLACE_ME
+DISCOPIPE_CHANNEL_ID=REPLACE_ME
+DISCOPIPE_CWD=/home/doyu/discopipe-agent
+EOF
+```
+
+Then the operator edits `REPLACE_ME` values with an editor (not `echo`).
+
+- [ ] **Step 3: Start the bot**
+
+```bash
+set -a; source ~/.config/discopipe/env; set +a; discopipe
 ```
 
 Expected: `discopipe: connected as <botname> (id=…)` on stdout.
 
-- [ ] **Step 3: Verify the checklist from the spec, one message at a time**
+- [ ] **Step 4: Verify the checklist from the spec, one message at a time**
 
 1. Send `hello, which directory are you in?` → reply mentions `discopipe-agent`.
 2. Send `what did I just ask you?` → reply proves `--continue` continuity.
 3. Send `use gh to show my three most recent GitHub notifications` → reply shows `gh` working through the agent's Bash tool.
 4. Send a request that produces long output (`explain this repo in detail`) → reply arrives under 2000 chars (CLAUDE.md layer) or shows `… (truncated)` (safety net); either is a pass.
 5. Send `run: echo @everyone` → the reply must **not** ping anyone.
-6. Restart the bot with `DISCOPIPE_TIMEOUT=5`, send `sleep for 60 seconds using bash` → reply contains `… timed out` and `(exit …)` within ~6 s. Restore the normal timeout afterward.
+6. Restart the bot with `DISCOPIPE_TIMEOUT=5` in the env file, send `sleep for 60 seconds using bash` → reply contains `… timed out` and `(exit …)` within ~6 s. Restore the normal timeout afterward.
+7. Make the agent fail with backticks on stderr — e.g. set `DISCOPIPE_CMD=bash -c 'echo "\`\`\`" >&2; exit 1'` temporarily — → the failure reply must render as **one** fenced block on the phone: the zero-width-space neutralization of ``` in stderr is only proven by Discord's actual renderer. Restore `DISCOPIPE_CMD` afterward.
 
-- [ ] **Step 4: Record the result**
+- [ ] **Step 5: Record the result**
 
 Append a `## E2E result` section (date + pass/fail per item) to `docs/superpowers/specs/2026-07-13-discopipe-design.md`, then:
 
