@@ -6,5 +6,6 @@ d = { 'settings': { 'branch': 'main',
                 'git_url': 'https://github.com/doyu/discopipe',
                 'lib_path': 'discopipe'},
   'syms': { 'discopipe.bot': { 'discopipe.bot.compose': ('bot.html#compose', 'discopipe/bot.py'),
+                               'discopipe.bot.load_config': ('bot.html#load_config', 'discopipe/bot.py'),
                                'discopipe.bot.reply_text': ('bot.html#reply_text', 'discopipe/bot.py'),
                                'discopipe.bot.run_agent': ('bot.html#run_agent', 'discopipe/bot.py')}}}
