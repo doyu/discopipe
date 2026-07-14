@@ -7,3 +7,8 @@ website:
   description: "Discord passthrough to a headless coding agent CLI"
   repo-branch: main
   repo-url: "https://github.com/doyu/discopipe"
+
+format-links:
+  - html
+  - format: commonmark
+    text: Markdown
