@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "discopipe"
+dynamic = ["version"]
+description = "Discord passthrough to a headless coding agent CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Hiroshi Doyu", email = "hiroshi.doyu@ninjalabo.ai"}]
+keywords = ['nbdev', 'jupyter', 'notebook', 'python']
+classifiers = ["Natural Language :: English", "Intended Audience :: Developers", "Development Status :: 3 - Alpha", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3 :: Only"]
+dependencies = ["discord.py"]
+
+[project.urls]
+Repository = "https://github.com/doyu/discopipe"
+Documentation = "https://doyu.github.io/discopipe"
+
+[project.scripts]
+discopipe = "discopipe.bot:main"
+
+[project.entry-points.nbdev]
+discopipe = "discopipe._modidx:d"
+
+[tool.setuptools.dynamic]
+version = {attr = "discopipe.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["discopipe"]
+
+[tool.nbdev]
