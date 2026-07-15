@@ -164,3 +164,19 @@ Estimated exported code: ~50 lines.
 - multi-message chunking of long replies
 - attachments, threads, reactions, streaming/progress updates
 - any tmux integration
+
+## E2E result
+
+2026-07-14 — real `claude -p` on the VM, real Discord channel, operator-verified. All 7 pass:
+
+1. PASS — cwd reported as the dedicated agent directory
+2. PASS — `--continue` continuity across messages
+3. PASS — `gh` works through the agent's Bash tool
+4. PASS — long output stays within Discord's limit (CLAUDE.md layer / truncation)
+5. PASS — `echo @everyone` output pings no one
+6. PASS — `DISCOPIPE_TIMEOUT=5` → `… timed out` + `(exit …)` within ~6 s
+7. PASS — ``` on stderr renders as one fenced block (ZWSP neutralization holds in Discord's renderer)
+
+Notes: bot reuses the former discomux Discord application; bot username renamed
+discomux → discopipe via `PATCH /users/@me` on 2026-07-14. Env lives in
+`~/.config/discopipe/env` (chmod 600), agent dir `~/discopipe-agent`.
