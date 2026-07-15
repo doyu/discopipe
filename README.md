@@ -61,3 +61,36 @@ set -a; source ~/.config/discopipe/env; set +a; discopipe
 Nonzero agent exits are reported in the reply as `(exit N)` plus the
 agent’s stderr — never retried, so a transient failure can’t replay side
 effects (like creating a duplicate PR).
+
+## Run as a service (systemd)
+
+For unattended operation, run the bot as a systemd user unit consuming the
+same env file. Create `~/.config/systemd/user/discopipe.service`:
+
+``` ini
+[Unit]
+Description=discopipe - Discord passthrough to a headless coding agent CLI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=%h/.config/discopipe/env
+ExecStart=%h/discopipe/.venv/bin/discopipe
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+(Point `ExecStart` at wherever the `discopipe` entry point is installed —
+e.g. a repo-local venv as above.)
+
+``` sh
+systemctl --user daemon-reload
+systemctl --user enable --now discopipe
+loginctl enable-linger $USER    # start at boot, no login session needed
+```
+
+Follow logs with `journalctl --user -u discopipe -f`; restart after env
+changes with `systemctl --user restart discopipe`.
